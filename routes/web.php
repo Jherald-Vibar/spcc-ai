@@ -56,3 +56,5 @@ Route::middleware('auth')->group(function () {
         ->middleware(EnsureRole::class . ':admin')
         ->name('admin.dashboard');
 });
+
+require __DIR__.'/student.php';
