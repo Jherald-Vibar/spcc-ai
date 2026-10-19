@@ -58,3 +58,5 @@ Route::middleware('auth')->group(function () {
 });
 
 require __DIR__.'/student.php';
+require __DIR__.'/teacher.php';
+require __DIR__.'/admin.php';
