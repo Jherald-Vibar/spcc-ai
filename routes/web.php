@@ -9,11 +9,6 @@ use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login');
 
-/*
-|--------------------------------------------------------------------------
-| Guests: sign in and register with an SPCC email (email OTP)
-|--------------------------------------------------------------------------
-*/
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'create'])->name('login');
     Route::post('/login', [LoginController::class, 'store'])->name('login.store');
@@ -33,15 +28,10 @@ Route::middleware('guest')->group(function () {
     Route::get('/register/complete', [OtpController::class, 'complete'])->name('register.complete');
 });
 
-/*
-|--------------------------------------------------------------------------
-| Signed-in users
-|--------------------------------------------------------------------------
-*/
+
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
-    // sends the user to the dashboard for their role
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::get('/student', [DashboardController::class, 'student'])
