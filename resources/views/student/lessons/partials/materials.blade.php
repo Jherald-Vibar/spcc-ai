@@ -7,8 +7,7 @@
                     <p class="truncate text-sm font-medium text-slate-900">{{ $file['name'] }}</p>
                     <p class="text-xs text-slate-500">{{ $file['size'] }}</p>
                 </div>
-                {{-- TODO: point href at your download route once materials are stored --}}
-                <a href="#" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                <a href="{{ route('student.files.download', $file) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
                     <x-icon name="download" class="size-4" /> Download
                 </a>
             </li>

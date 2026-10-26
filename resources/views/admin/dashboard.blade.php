@@ -1,7 +1,7 @@
 @php
     // line chart geometry (inline SVG, no chart library needed)
     $w = 640; $h = 220; $left = 44; $right = 12; $top = 12; $bottom = 28;
-    $max = (int) (ceil(max($usage) / 500) * 500);
+    $max = max(4, (int) (ceil(max($usage) / 4) * 4));
     $n = count($usage);
     $pts = [];
     foreach ($usage as $i => $v) {
@@ -19,7 +19,7 @@
 
     <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         @foreach ([
-            ['Total Users', number_format($stats['users']), 'users', 'bg-blue-100 text-blue-700', '↑ '.$stats['growth'].'% this month'],
+            ['Total Users', number_format($stats['users']), 'users', 'bg-blue-100 text-blue-700', $stats['growth'] ? '↑ '.$stats['growth'].'% this month' : null],
             ['Students', number_format($stats['students']), 'academic-cap', 'bg-sky-100 text-sky-700', null],
             ['Teachers', number_format($stats['teachers']), 'user', 'bg-orange-100 text-orange-700', null],
             ['Active Lessons', number_format($stats['lessons']), 'book-open', 'bg-green-100 text-green-700', null],
@@ -42,8 +42,7 @@
         <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h3 class="font-semibold text-slate-900">System Usage <span class="font-normal text-slate-400">(Last 30 Days)</span></h3>
             <p class="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                <span class="inline-block size-2.5 rounded-full bg-blue-600"></span> Active users
-                <span class="text-slate-300">&middot;</span> Sample data
+                <span class="inline-block size-2.5 rounded-full bg-blue-600"></span> People who signed in each day
             </p>
 
             <svg viewBox="0 0 {{ $w }} {{ $h }}" class="mt-4 w-full" role="img" aria-label="Line chart of daily active users over the last 30 days">
@@ -71,6 +70,9 @@
         {{-- Recent activities --}}
         <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h3 class="font-semibold text-slate-900">Recent Activities</h3>
+            @if ($activities->isEmpty())
+                <p class="mt-4 text-sm text-slate-500">Nothing yet. Activity appears here as users and lessons change.</p>
+            @endif
             <ul class="mt-4 space-y-4">
                 @foreach ($activities as $a)
                     <li class="flex items-start gap-3">

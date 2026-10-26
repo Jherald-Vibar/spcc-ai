@@ -59,7 +59,11 @@
             @if (! $selectedSubject)
                 <div class="mt-6 rounded-lg border border-dashed border-slate-300 px-6 py-12 text-center">
                     <x-icon name="book-open" class="mx-auto size-10 text-slate-300" />
+                    @if ($subjects->isEmpty())
+                        <p class="mt-3 text-sm text-slate-500">No subject is assigned to you yet. Ask an administrator to assign one.</p>
+                    @else
                     <p class="mt-3 text-sm text-slate-500">Choose a year level and subject, then press <strong>Enter</strong> to manage its lessons.</p>
+                    @endif
                 </div>
             @else
                 <p class="mt-3 text-sm font-medium text-slate-600">
@@ -80,19 +84,23 @@
                         @if ($loop->first) <ul class="space-y-2"> @endif
                         <li class="flex items-center gap-4 rounded-lg border border-slate-200 px-4 py-3">
                             <x-icon name="document" class="size-5 shrink-0 text-blue-600" />
-                            <span class="w-16 shrink-0 text-sm font-semibold text-slate-700">Week {{ $lesson['week'] }}</span>
-                            <span class="min-w-0 flex-1 truncate text-sm text-slate-800">{{ $lesson['title'] }}</span>
-                            <x-badge :status="$lesson['status']" />
+                            <span class="w-16 shrink-0 text-sm font-semibold text-slate-700">Week {{ $lesson->week }}</span>
+                            <span class="min-w-0 flex-1 truncate text-sm text-slate-800">{{ $lesson->title }}</span>
+                            <x-badge :status="$lesson->display_status" />
 
                             <details class="relative">
                                 <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-md text-slate-500 hover:bg-slate-100 [&::-webkit-details-marker]:hidden" aria-label="Lesson actions">
                                     <x-icon name="ellipsis-vertical" class="size-5" />
                                 </summary>
                                 <div class="absolute right-0 z-10 mt-1 w-36 rounded-lg bg-white p-1 shadow-lg ring-1 ring-slate-200">
-                                    {{-- TODO: point these at real lesson edit / preview / delete routes --}}
-                                    <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Edit</a>
-                                    <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Preview</a>
-                                    <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">Delete</a>
+                                    <a href="{{ route('teacher.lessons.edit', [$selectedSubject->code, $lesson->week]) }}" class="block rounded-md px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Edit</a>
+                                    <a href="{{ route('teacher.lessons.show', [$selectedSubject->code, $lesson->week]) }}" class="block rounded-md px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Preview</a>
+                                    <form method="POST" action="{{ route('teacher.lessons.publish', [$selectedSubject->code, $lesson->week]) }}">@csrf
+                                        <button type="submit" class="block w-full rounded-md px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50">{{ $lesson->isPublished() ? 'Move to draft' : 'Publish' }}</button>
+                                    </form>
+                                    <form method="POST" action="{{ route('teacher.lessons.destroy', [$selectedSubject->code, $lesson->week]) }}" onsubmit="return confirm('Delete Week {{ $lesson->week }} and its files?')">@csrf @method('DELETE')
+                                        <button type="submit" class="block w-full rounded-md px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50">Delete</button>
+                                    </form>
                                 </div>
                             </details>
                         </li>
@@ -113,7 +121,7 @@
                             </div>
                         @endforeach
                     </div>
-                    <p class="mt-3 text-xs text-slate-400">Sample figures until analytics are connected.</p>
+                    <p class="mt-3 text-xs text-slate-400">AI chat and reviewer analytics will appear here once those features are built.</p>
                 </div>
             @endif
         </section>

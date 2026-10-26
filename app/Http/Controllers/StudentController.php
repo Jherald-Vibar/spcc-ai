@@ -2,68 +2,117 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Lesson;
+use App\Models\LessonFile;
+use App\Models\LessonProgress;
+use App\Models\Subject;
 use App\Support\SampleCurriculum;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StudentController extends Controller
 {
-    public function dashboard(): View
+    public function dashboard(Request $request): View
     {
-        $subjects = collect(SampleCurriculum::subjects());
-        $lessons  = collect(SampleCurriculum::lessons('IAS2'));
+        $student = $request->user();
+
+        $subjectIds = Subject::visibleTo($student)->pluck('id');
+
+        $progress = LessonProgress::where('user_id', $student->id)
+            ->whereHas('lesson', fn ($q) => $q->published()->whereIn('subject_id', $subjectIds))
+            ->get();
+
+        $current = $progress->where('status', 'in_progress')->sortByDesc('updated_at')->first();
+        $continue = $current?->lesson()->with('subject')->first();
 
         return view('student.dashboard', [
-            'subjectCount' => $subjects->count(),
-            'completed'    => $lessons->where('status', 'completed')->count(),
-            'inProgress'   => $lessons->where('status', 'in_progress')->count(),
-            'continue'     => $lessons->firstWhere('status', 'in_progress'),
-            'continueSubject' => SampleCurriculum::subject('IAS2'),
+            'subjectCount'    => $subjectIds->count(),
+            'completed'       => $progress->where('status', 'completed')->count(),
+            'inProgress'      => $progress->where('status', 'in_progress')->count(),
+            'continue'        => $continue,
+            'continueSubject' => $continue?->subject,
         ]);
     }
 
     /** "My Lessons": pick year + subject, then see the available lessons. */
     public function lessons(Request $request): View
     {
-        $years    = SampleCurriculum::YEARS;
-        $subjects = SampleCurriculum::subjects();
+        $student  = $request->user();
+        $subjects = Subject::visibleTo($student)->orderBy('year')->orderBy('code')->get();
+
+        $years = $student->year_level
+            ? [$student->year_level => Subject::YEARS[$student->year_level] ?? $student->year_level.'th Year']
+            : Subject::YEARS;
 
         $year    = (int) $request->query('year', 0);
-        $subject = SampleCurriculum::subject((string) $request->query('subject', ''));
+        $subject = $subjects->firstWhere('code', strtoupper((string) $request->query('subject', '')));
 
         // ignore a subject that does not belong to the chosen year
-        if ($subject && $year && $subject['year'] !== $year) {
+        if ($subject && $year && $subject->year !== $year) {
             $subject = null;
+        }
+
+        $lessons = collect();
+        if ($subject) {
+            $lessons = $subject->lessons()->published()->get();
+            Lesson::withStatusFor($lessons, $student);
         }
 
         return view('student.lessons.index', [
             'years'           => $years,
             'subjects'        => $subjects,
-            'selectedYear'    => $year ?: ($subject['year'] ?? 0),
+            'selectedYear'    => $year ?: ($subject->year ?? 0),
             'selectedSubject' => $subject,
-            'lessons'         => $subject ? SampleCurriculum::lessons($subject['code']) : [],
+            'lessons'         => $lessons,
         ]);
     }
 
     public function showLesson(Request $request, string $subject, int $week): View
     {
+        $student = $request->user();
+
+        $subjectModel = Subject::visibleTo($student)->where('code', strtoupper($subject))->firstOrFail();
+        $lesson = $subjectModel->lessons()->published()->where('week', $week)->firstOrFail();
+
+        // Opening a lesson for the first time marks it "in progress"; completed stays completed.
+        LessonProgress::firstOrCreate(
+            ['user_id' => $student->id, 'lesson_id' => $lesson->id],
+            ['status' => 'in_progress'],
+        );
+
+        $lessons = $subjectModel->lessons()->published()->get();
+        Lesson::withStatusFor($lessons, $student);
+        $lesson->setAttribute('status', $lessons->firstWhere('id', $lesson->id)->status);
+
         $tab = $request->query('tab');
 
-        $subjectData = SampleCurriculum::subject($subject);
-        $lesson      = $subjectData ? SampleCurriculum::lesson($subject, $week) : null;
-
-        abort_if(! $lesson, 404);
-
         return view('student.lessons.show', [
-            'subject'   => $subjectData,
+            'subject'   => $subjectModel,
             'lesson'    => $lesson,
-            'lessons'   => SampleCurriculum::lessons($subject),
-            'materials' => SampleCurriculum::materials(),
+            'lessons'   => $lessons,
+            'materials' => $lesson->files()->orderBy('name')->get(),
+            // Reviewer and forum stay sample data until the AI phases / forum module exist.
             'questions' => SampleCurriculum::reviewer(),
             'posts'     => SampleCurriculum::forumPosts(),
             'tab'       => in_array($tab, ['overview', 'video', 'chat', 'reviewer', 'materials', 'forum'], true)
                             ? $tab : 'overview',
         ]);
+    }
+
+    /** Download a lesson file. Only for published lessons of subjects the student may open. */
+    public function downloadFile(Request $request, LessonFile $file): StreamedResponse
+    {
+        $lesson = Lesson::published()->find($file->lesson_id);
+
+        abort_unless(
+            $lesson && Subject::visibleTo($request->user())->whereKey($lesson->subject_id)->exists(),
+            404
+        );
+        abort_unless(Storage::disk('local')->exists($file->path), 404);
+
+        return Storage::disk('local')->download($file->path, $file->name);
     }
 
     public function profile(): View

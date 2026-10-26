@@ -4,7 +4,6 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\OtpController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Middleware\EnsureRole;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login');
@@ -34,17 +33,6 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    Route::get('/student', [DashboardController::class, 'student'])
-        ->middleware(EnsureRole::class . ':student')
-        ->name('student.dashboard');
-
-    Route::get('/teacher', [DashboardController::class, 'teacher'])
-        ->middleware(EnsureRole::class . ':teacher')
-        ->name('teacher.dashboard');
-
-    Route::get('/admin', [DashboardController::class, 'admin'])
-        ->middleware(EnsureRole::class . ':admin')
-        ->name('admin.dashboard');
 });
 
 require __DIR__.'/student.php';

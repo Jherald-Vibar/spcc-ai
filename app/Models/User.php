@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -18,7 +19,7 @@ class User extends Authenticatable
     public const STATUS_INACTIVE = 'inactive';
 
     /**
-     * role, status and email_verified_at are intentionally NOT mass assignable.
+     * role, status, year_level and email_verified_at are intentionally NOT mass assignable.
      * Set them explicitly with forceFill() in trusted code (OTP verification, seeders, admin panel).
      */
     protected $fillable = [
@@ -37,7 +38,13 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'year_level' => 'integer',
         ];
+    }
+
+    public function lessonProgress(): HasMany
+    {
+        return $this->hasMany(LessonProgress::class);
     }
 
     public function isAdmin(): bool

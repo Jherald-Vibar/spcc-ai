@@ -44,23 +44,30 @@
                 <tbody class="divide-y divide-slate-100">
                     @forelse ($lessons as $l)
                         <tr class="hover:bg-slate-50/60">
-                            <td class="px-6 py-3 text-slate-600">{{ $l['week'] }}</td>
-                            <td class="px-6 py-3 font-medium text-slate-900">{{ $l['title'] }}</td>
-                            <td class="px-6 py-3 text-slate-600">{{ $l['subject'] }}</td>
-                            <td class="px-6 py-3 text-slate-600">{{ $l['by'] }}</td>
-                            <td class="px-6 py-3"><x-badge :status="$l['status']" /></td>
+                            <td class="px-6 py-3 text-slate-600">{{ $l->week }}</td>
+                            <td class="px-6 py-3 font-medium text-slate-900">{{ $l->title }}</td>
+                            <td class="px-6 py-3 text-slate-600">{{ $l->subject->code }}</td>
+                            <td class="px-6 py-3 text-slate-600">{{ $l->creator->name ?? '—' }}</td>
+                            <td class="px-6 py-3"><x-badge :status="$l->display_status" /></td>
                             <td class="px-6 py-3 text-right">
                                 <details class="relative inline-block text-left">
                                     <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-md text-slate-500 hover:bg-slate-100 [&::-webkit-details-marker]:hidden" aria-label="Lesson actions">
                                         <x-icon name="ellipsis-vertical" class="size-5" />
                                     </summary>
                                     <div class="absolute right-0 z-10 mt-1 w-40 rounded-lg bg-white p-1 shadow-lg ring-1 ring-slate-200">
-                                        {{-- TODO: wire these to real review / approve / remove routes --}}
-                                        <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Review</a>
-                                        @if (in_array($l['status'], ['pending', 'draft'], true))
-                                            <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Approve &amp; publish</a>
+                                        <a href="{{ route('admin.lessons.show', $l) }}" class="block rounded-md px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Review</a>
+                                        @if ($l->isPublished())
+                                            <form method="POST" action="{{ route('admin.lessons.unpublish', $l) }}">@csrf
+                                                <button type="submit" class="block w-full rounded-md px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50">Unpublish</button>
+                                            </form>
+                                        @else
+                                            <form method="POST" action="{{ route('admin.lessons.publish', $l) }}">@csrf
+                                                <button type="submit" class="block w-full rounded-md px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50">Approve &amp; publish</button>
+                                            </form>
                                         @endif
-                                        <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">Remove</a>
+                                        <form method="POST" action="{{ route('admin.lessons.destroy', $l) }}" onsubmit="return confirm('Remove this lesson and its files?')">@csrf @method('DELETE')
+                                            <button type="submit" class="block w-full rounded-md px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50">Remove</button>
+                                        </form>
                                     </div>
                                 </details>
                             </td>
@@ -71,5 +78,9 @@
                 </tbody>
             </table>
         </div>
+
+        @if ($lessons->hasPages())
+            <div class="border-t border-slate-100 px-6 py-4">{{ $lessons->links() }}</div>
+        @endif
     </section>
 </x-layouts.admin>

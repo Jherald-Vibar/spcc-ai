@@ -1,7 +1,7 @@
 @php
     $steps = [
         1 => ['Lesson Details',   'Set week number, title, and description.'],
-        2 => ['Upload Materials', 'Upload PDF, PPTX, or DOCX files.'],
+        2 => ['Upload Materials', 'Upload PDF, PPTX, DOCX or image files.'],
         3 => ['Enter AI Prompt',  'Provide a prompt for the AI video.'],
         4 => ['Generate Video',   'Let the AI create the lesson video.'],
         5 => ['Review & Publish', 'Preview and publish for students.'],
@@ -11,24 +11,26 @@
     $secondary = 'rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50';
 @endphp
 
-<x-layouts.teacher title="Create Lesson" active="subjects">
+@php($editing = isset($lesson) && $lesson)
+<x-layouts.teacher :title="$editing ? 'Edit Lesson' : 'Create Lesson'" active="subjects">
     <nav class="mb-4 flex flex-wrap items-center gap-1.5 text-sm text-slate-500" aria-label="Breadcrumb">
         <a href="{{ route('teacher.subjects') }}" class="hover:text-blue-700 hover:underline">My Subjects</a>
         <x-icon name="chevron-right" class="size-3.5" />
         <a href="{{ route('teacher.subjects', ['year' => $subject['year'], 'subject' => $subject['code']]) }}" class="hover:text-blue-700 hover:underline">{{ $subject['code'] }}</a>
         <x-icon name="chevron-right" class="size-3.5" />
-        <span class="font-medium text-slate-700">Create Lesson</span>
+        <span class="font-medium text-slate-700">{{ $editing ? 'Edit Week '.$lesson->week : 'Create Lesson' }}</span>
     </nav>
 
     <form id="lesson-form" method="POST" enctype="multipart/form-data" novalidate
-          action="{{ route('teacher.lessons.store', $subject['code']) }}"
+          action="{{ $editing ? route('teacher.lessons.update', [$subject['code'], $lesson->week]) : route('teacher.lessons.store', $subject['code']) }}"
           class="grid gap-6 lg:grid-cols-[20rem_1fr]">
         @csrf
-        <input type="hidden" name="generate_video" id="generate_video" value="0">
+        @if ($editing) @method('PUT') @endif
+        <input type="hidden" name="generate_video" id="generate_video" value="{{ old('generate_video', $editing && $lesson->video_requested ? 1 : 0) }}">
 
         {{-- Step list --}}
         <aside class="h-fit rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <h2 class="font-semibold text-slate-900">Create Lesson <span class="font-normal text-slate-400">(Step-by-Step)</span></h2>
+            <h2 class="font-semibold text-slate-900">{{ $editing ? 'Edit Lesson' : 'Create Lesson' }} <span class="font-normal text-slate-400">(Step-by-Step)</span></h2>
             <ol class="mt-4 space-y-1">
                 @foreach ($steps as $n => [$name, $hint])
                     <li>
@@ -56,19 +58,19 @@
                     <div>
                         <label for="week" class="mb-1.5 block text-sm font-medium text-slate-700">Week Number</label>
                         <select id="week" name="week" class="{{ $field }}">
-                            @for ($w = 1; $w <= 18; $w++)
+                            @for ($w = 1; $w <= 30; $w++)
                                 <option value="{{ $w }}" @selected((int) old('week', $nextWeek) === $w)>Week {{ $w }}</option>
                             @endfor
                         </select>
                     </div>
                     <div>
                         <label for="title" class="mb-1.5 block text-sm font-medium text-slate-700">Lesson Title</label>
-                        <input id="title" name="title" type="text" value="{{ old('title') }}" maxlength="150" class="{{ $field }}" placeholder="e.g. Polyalphabetic Ciphers">
+                        <input id="title" name="title" type="text" value="{{ old('title', $editing ? $lesson->title : '') }}" maxlength="150" class="{{ $field }}" placeholder="e.g. Polyalphabetic Ciphers">
                         <p id="title-error" class="mt-1.5 hidden text-sm text-red-600">Please enter a lesson title.</p>
                     </div>
                     <div>
                         <label for="description" class="mb-1.5 block text-sm font-medium text-slate-700">Description</label>
-                        <textarea id="description" name="description" rows="4" maxlength="2000" class="{{ $field }}" placeholder="What will students learn?">{{ old('description') }}</textarea>
+                        <textarea id="description" name="description" rows="4" maxlength="2000" class="{{ $field }}" placeholder="What will students learn?">{{ old('description', $editing ? $lesson->description : '') }}</textarea>
                     </div>
                 </div>
             </div>
@@ -76,13 +78,29 @@
             {{-- Step 2 --}}
             <div data-step="2" class="hidden">
                 <h3 class="mt-1 text-lg font-semibold text-slate-900">Step 2: Upload Materials</h3>
-                <p class="mt-1 text-sm text-slate-500">PDF, PPTX or DOCX, up to 20 MB each. The AI uses these to build the lesson.</p>
+                <p class="mt-1 text-sm text-slate-500">PDF, PPTX, DOCX or image (PNG/JPG), up to 20 MB each. The AI chat answers only from these files.</p>
+
+                @if ($editing && $lesson->files->isNotEmpty())
+                    <p class="mt-5 text-sm font-medium text-slate-700">Current files <span class="font-normal text-slate-400">(tick to remove when you save)</span></p>
+                    <ul class="mt-2 divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200">
+                        @foreach ($lesson->files as $file)
+                            <li class="flex items-center gap-3 px-4 py-2.5 text-sm">
+                                <span class="rounded bg-sky-100 px-1.5 py-0.5 text-xs font-bold text-sky-700">{{ $file->type }}</span>
+                                <span class="min-w-0 flex-1 truncate text-slate-800">{{ $file->name }}</span>
+                                <span class="text-xs text-slate-400">{{ $file->size }}</span>
+                                <label class="flex items-center gap-1.5 text-xs text-red-600">
+                                    <input type="checkbox" name="remove_files[]" value="{{ $file->id }}" @checked(in_array($file->id, old('remove_files', []))) class="rounded border-slate-300"> Remove
+                                </label>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
 
                 <label for="materials" class="mt-5 flex cursor-pointer flex-col items-center rounded-xl border-2 border-dashed border-slate-300 px-6 py-10 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
                     <x-icon name="cloud-upload" class="size-10 text-blue-600" />
-                    <span class="mt-2 text-sm font-medium text-slate-700">Click to choose files</span>
-                    <span class="text-xs text-slate-400">.pdf, .pptx, .docx</span>
-                    <input id="materials" name="materials[]" type="file" multiple accept=".pdf,.pptx,.docx" class="sr-only">
+                    <span class="mt-2 text-sm font-medium text-slate-700">Click to choose {{ $editing ? 'more ' : '' }}files</span>
+                    <span class="text-xs text-slate-400">.pdf, .pptx, .docx, .png, .jpg</span>
+                    <input id="materials" name="materials[]" type="file" multiple accept=".pdf,.pptx,.docx,.png,.jpg,.jpeg" class="sr-only">
                 </label>
                 <ul id="file-list" class="mt-3 space-y-1 text-sm text-slate-600"></ul>
             </div>
@@ -92,7 +110,7 @@
                 <h3 class="mt-1 text-lg font-semibold text-slate-900">Step 3: Enter AI Prompt</h3>
                 <p class="mt-1 text-sm text-slate-500">Tell the AI how the video should explain this lesson.</p>
                 <textarea id="ai_prompt" name="ai_prompt" rows="6" maxlength="4000" class="{{ $field }} mt-5"
-                          placeholder="e.g. Explain the Vigenere cipher step by step with a worked example, in simple language for 4th-year students.">{{ old('ai_prompt') }}</textarea>
+                          placeholder="e.g. Explain the Vigenere cipher step by step with a worked example, in simple language for 4th-year students.">{{ old('ai_prompt', $editing ? $lesson->ai_prompt : '') }}</textarea>
             </div>
 
             {{-- Step 4 --}}
@@ -102,8 +120,10 @@
 
                 <div class="mt-5 rounded-xl bg-slate-50 p-6 text-center ring-1 ring-slate-200">
                     <x-icon name="sparkles" class="mx-auto size-10 text-blue-600" />
-                    <button type="button" id="generate-btn" class="{{ $primary }} mt-4">Generate AI Video</button>
-                    <p id="generate-status" class="mt-3 text-sm text-slate-500">Video generation has not been requested.</p>
+                    @php($requested = (string) old('generate_video', $editing && $lesson->video_requested ? 1 : 0) === '1')
+                    <button type="button" id="generate-btn" class="{{ $primary }} mt-4 {{ $requested ? 'opacity-60' : '' }}" @disabled($requested)>{{ $requested ? 'Video requested' : 'Generate AI Video' }}</button>
+                    <p id="generate-status" class="mt-3 text-sm text-slate-500">{{ $requested ? 'Video generation is requested for this lesson.' : 'Video generation has not been requested.' }}</p>
+                    <p class="mt-1 text-xs text-slate-400">The request is saved with the lesson. The AI video itself is produced in a later phase.</p>
                 </div>
             </div>
 
@@ -126,8 +146,8 @@
 
                 <div class="ml-auto flex flex-wrap gap-3">
                     <button type="button" id="next-btn" class="{{ $primary }}">Next &rarr;</button>
-                    <button type="submit" name="action" value="draft" id="draft-btn" class="{{ $secondary }} hidden">Save as Draft</button>
-                    <button type="submit" name="action" value="publish" id="publish-btn" class="{{ $primary }} hidden">Publish</button>
+                    <button type="submit" name="action" value="draft" id="draft-btn" class="{{ $secondary }} hidden">{{ $editing && $lesson->isPublished() ? 'Move to Draft' : 'Save as Draft' }}</button>
+                    <button type="submit" name="action" value="publish" id="publish-btn" class="{{ $primary }} hidden">{{ $editing && $lesson->isPublished() ? 'Save & Keep Published' : 'Publish' }}</button>
                 </div>
             </div>
         </section>
