@@ -84,6 +84,7 @@ def health() -> dict:
         "chunks": state["store"].count(),
         "embedding_model": settings.embedding_model,
         "llm": f"{settings.llm_provider}:{settings.llm_model}" if state["llm_ready"] else None,
+        "fallback": settings.fallback_provider or None,
         "threshold": settings.similarity_threshold,
     }
 

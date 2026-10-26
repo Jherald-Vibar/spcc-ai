@@ -1,11 +1,15 @@
 """LLM providers. Both only need an API key; swap with LLM_PROVIDER in .env."""
 from __future__ import annotations
 
+import logging
 import os
+import re
 import time
 from typing import Protocol
 
-from .config import Settings
+from .config import DEFAULT_MODELS, Settings
+
+log = logging.getLogger("spcc-ai")
 
 
 class LLMError(Exception):
@@ -35,6 +39,43 @@ class AnthropicLLM:
         except Exception as exc:
             raise LLMError(f"Anthropic request failed: {exc!r}") from exc
         return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
+
+
+class OllamaLLM:
+    """A model running on this computer through Ollama (https://ollama.com). No API key, no per-request cost.
+
+    num_ctx matters: Ollama's default window (2048 tokens) silently cuts long prompts, which would drop
+    most of the lecture excerpts, so it is raised here.
+    """
+
+    def __init__(self, base_url: str, model: str, num_ctx: int = 8192, timeout: int = 300, client=None):
+        self._url = base_url.rstrip("/") + "/api/chat"
+        self._model, self._num_ctx, self._timeout = model, num_ctx, timeout
+        self._client = client  # injectable for tests
+
+    def complete(self, system: str, user: str, max_tokens: int = 800) -> str:
+        body = {
+            "model": self._model,
+            "stream": False,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "options": {"temperature": 0.2, "num_predict": max_tokens, "num_ctx": self._num_ctx},
+        }
+        try:
+            if self._client is None:
+                import httpx
+
+                self._client = httpx.Client(timeout=httpx.Timeout(self._timeout, connect=10.0))
+            r = self._client.post(self._url, json=body)
+            if r.status_code == 404:
+                raise LLMError(f"Ollama does not have the model '{self._model}'. Run: ollama pull {self._model}")
+            r.raise_for_status()
+            text = r.json()["message"]["content"]
+        except LLMError:
+            raise
+        except Exception as exc:
+            raise LLMError(f"Ollama request failed (is Ollama running at {self._url}?): {exc!r}") from exc
+        # some models print their reasoning in <think> tags: students should only see the answer
+        return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 class GeminiLLM:
@@ -113,11 +154,45 @@ class GeminiLLM:
         raise err from last_exc
 
 
-def build_llm(settings: Settings) -> LLM | None:
-    """Returns None when no API key is set; ingestion still works, /ask answers 503."""
-    if settings.llm_provider == "anthropic" and settings.anthropic_api_key:
-        return AnthropicLLM(settings.anthropic_api_key, settings.llm_model)
-    if settings.llm_provider == "gemini" and settings.gemini_api_key:
+class FallbackLLM:
+    """Use `primary` (e.g. Ollama on this PC). If it fails or times out, answer with `fallback` (e.g. Gemini)."""
+
+    def __init__(self, primary: LLM, fallback: LLM, primary_name: str = "primary", fallback_name: str = "fallback"):
+        self.primary, self.fallback = primary, fallback
+        self.primary_name, self.fallback_name = primary_name, fallback_name
+
+    def complete(self, system: str, user: str, max_tokens: int = 800) -> str:
+        try:
+            return self.primary.complete(system, user, max_tokens)
+        except LLMError as exc:
+            log.warning("%s failed (%s); using %s instead", self.primary_name, exc, self.fallback_name)
+            return self.fallback.complete(system, user, max_tokens)
+
+
+def _build_one(provider: str, model: str, settings: Settings) -> LLM | None:
+    if provider == "anthropic" and settings.anthropic_api_key:
+        return AnthropicLLM(settings.anthropic_api_key, model)
+    if provider == "gemini" and settings.gemini_api_key:
         fallback = getattr(settings, "llm_fallback_model", "") or os.environ.get("LLM_FALLBACK_MODEL", "")
-        return GeminiLLM(settings.gemini_api_key, settings.llm_model, fallback)
+        return GeminiLLM(settings.gemini_api_key, model, fallback)
+    if provider == "ollama":
+        return OllamaLLM(settings.ollama_url, model, settings.ollama_num_ctx, settings.ollama_timeout)
     return None
+
+
+def build_llm(settings: Settings) -> LLM | None:
+    """Returns None when no provider is usable (no API key); ingestion still works, /ask answers 503.
+    With LLM_FALLBACK set (gemini or anthropic), the main provider is wrapped so a failure switches to it."""
+    main = _build_one(settings.llm_provider, settings.llm_model, settings)
+    backup_provider = settings.fallback_provider
+    if not backup_provider or backup_provider == settings.llm_provider:
+        return main
+
+    backup_model = settings.fallback_model or DEFAULT_MODELS.get(backup_provider, "")
+    backup = _build_one(backup_provider, backup_model, settings)
+    if backup is None:
+        log.warning("LLM_FALLBACK=%s is set but its API key is missing: no fallback is active.", backup_provider)
+        return main
+    if main is None:
+        return backup
+    return FallbackLLM(main, backup, f"{settings.llm_provider}:{settings.llm_model}", f"{backup_provider}:{backup_model}")

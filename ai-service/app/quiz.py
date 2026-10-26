@@ -47,8 +47,15 @@ class QuizService:
 
         user = self._user_message(self._pick(chunks), count)
 
-        for _ in range(2):  # one retry when the model returns nothing usable
-            raw = self.llm.complete(SYSTEM_PROMPT, user, max_tokens=3000)
+        # one retry when the model returns nothing usable; with a fallback configured, the last try uses the
+        # stronger fallback model (small local models often break the JSON format)
+        attempts = [self.llm, self.llm]
+        backup = getattr(self.llm, "fallback", None)
+        if backup is not None:
+            attempts.append(backup)
+
+        for llm in attempts:
+            raw = llm.complete(SYSTEM_PROMPT, user, max_tokens=3000)
             questions = self._parse(raw, count)
             if questions:
                 return questions

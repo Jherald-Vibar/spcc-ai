@@ -32,9 +32,14 @@ class Settings:
     max_upload_mb: int
     quiz_max_words: int
     gemini_search_model: str
+    ollama_url: str
+    ollama_num_ctx: int
+    ollama_timeout: int
+    fallback_provider: str
+    fallback_model: str
 
 
-DEFAULT_MODELS = {"anthropic": "claude-haiku-5-5", "gemini": "gemini-2.5-flash"}
+DEFAULT_MODELS = {"anthropic": "claude-haiku-5-5", "gemini": "gemini-2.5-flash", "ollama": "qwen2.5:3b"}
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -70,4 +75,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             or (env.get("LLM_MODEL") if provider == "gemini" else "")
             or "gemini-2.5-flash"
         ),
+        ollama_url=env.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/"),
+        ollama_num_ctx=int(env.get("OLLAMA_NUM_CTX", "8192")),
+        ollama_timeout=int(env.get("OLLAMA_TIMEOUT", "300")),
+        fallback_provider=env.get("LLM_FALLBACK", "").strip().lower(),
+        fallback_model=env.get("FALLBACK_LLM_MODEL", ""),
     )
