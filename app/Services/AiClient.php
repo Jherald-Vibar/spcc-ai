@@ -75,6 +75,45 @@ class AiClient
         return $response->json();
     }
 
+    /**
+     * Ask the AI service to write multiple-choice questions from the lesson's processed files.
+     *
+     * @return array<int, array{question: string, options: array<int, string>, answer_index: int, explanation?: string}>
+     */
+    public function quiz(int $lessonId, int $count = 5): array
+    {
+        try {
+            $response = $this->http((int) config('services.ai.quiz_timeout', 180))
+                ->post('/quiz', ['lesson_ids' => [$lessonId], 'count' => $count]);
+        } catch (ConnectionException $e) {
+            throw new AiServiceException('The AI service is not reachable.', true, $e);
+        }
+
+        $this->throwIfFailed($response);
+
+        return $response->json('questions') ?? [];
+    }
+
+    /**
+     * Ask the AI service (Gemini + Google Search) for YouTube videos that match a lesson.
+     * Every video has already been checked to exist; the teacher still picks one.
+     *
+     * @return array<int, array{video_id: string, url: string, title: string, channel: string, thumbnail: string}>
+     */
+    public function suggestVideos(int $lessonId, string $title, int $count = 5): array
+    {
+        try {
+            $response = $this->http((int) config('services.ai.video_timeout', 90))
+                ->post('/video-suggestions', ['lesson_ids' => [$lessonId], 'lesson_title' => $title, 'count' => $count]);
+        } catch (ConnectionException $e) {
+            throw new AiServiceException('The AI service is not reachable.', true, $e);
+        }
+
+        $this->throwIfFailed($response);
+
+        return $response->json('videos') ?? [];
+    }
+
     public function deleteFile(int $fileId): void
     {
         try {

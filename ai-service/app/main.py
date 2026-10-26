@@ -21,6 +21,7 @@ from .llm import LLMError, build_llm
 from .quiz import NoMaterialError, QuizService
 from .rag import RagService
 from .store import ChromaStore
+from .video_search import VideoSearchError, VideoSearchService
 
 log = logging.getLogger("spcc-ai")
 settings = load_settings()
@@ -42,6 +43,7 @@ async def lifespan(app: FastAPI):
         store=store,
         rag=RagService(embedder, store, llm, settings.similarity_threshold, settings.top_k),
         quiz=QuizService(store, llm, settings.quiz_max_words),
+        videos=VideoSearchService(store, settings.gemini_api_key, settings.gemini_search_model),
         llm_ready=llm is not None,
     )
     yield
@@ -67,6 +69,12 @@ class AskRequest(BaseModel):
 class QuizRequest(BaseModel):
     lesson_ids: list[int] = Field(min_length=1, max_length=10)
     count: int = Field(default=5, ge=1, le=10)
+
+
+class VideoSearchRequest(BaseModel):
+    lesson_ids: list[int] = Field(min_length=1, max_length=10)
+    lesson_title: str = Field(min_length=2, max_length=200)
+    count: int = Field(default=5, ge=1, le=8)
 
 
 @app.get("/health", dependencies=[Depends(require_key)])
@@ -148,3 +156,14 @@ def quiz(req: QuizRequest) -> dict:
         log.exception("LLM failure while writing a quiz")
         raise HTTPException(502, "The AI model did not respond. Please try again.") from exc
     return {"questions": questions}
+
+
+@app.post("/video-suggestions", dependencies=[Depends(require_key)])
+def video_suggestions(req: VideoSearchRequest) -> dict:
+    """Suggest YouTube videos for a lesson (Gemini + Google Search). A teacher must approve one."""
+    try:
+        videos = state["videos"].suggest(req.lesson_ids, req.lesson_title, req.count)
+    except VideoSearchError as exc:
+        log.warning("Video search failed: %s", exc)
+        raise HTTPException(502, str(exc)) from exc
+    return {"videos": videos}

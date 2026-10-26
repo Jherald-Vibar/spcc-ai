@@ -1,6 +1,13 @@
-{{-- AI video player. Shows the real <video> once $lesson['video_url'] is set, otherwise a placeholder. --}}
+{{-- Lesson video. Order: AI video (when generated) -> teacher-approved YouTube link -> placeholder. --}}
 @if (! empty($lesson['video_url']))
     <video controls class="aspect-video w-full rounded-xl bg-slate-900" src="{{ $lesson['video_url'] }}"></video>
+@elseif (! empty($lesson['youtube_embed_url']))
+    <div class="aspect-video w-full overflow-hidden rounded-xl bg-slate-900">
+        <iframe src="{{ $lesson['youtube_embed_url'] }}" title="{{ $lesson['title'] }}" class="size-full" loading="lazy"
+                allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"
+                allowfullscreen></iframe>
+    </div>
+    <p class="mt-2 text-xs text-slate-500">Video selected by your teacher. The AI-generated video is not available yet.</p>
 @else
     <div class="relative aspect-video overflow-hidden rounded-xl bg-gradient-to-br from-slate-900 via-blue-950 to-blue-900 text-white">
         <div class="absolute inset-0 grid place-items-center">

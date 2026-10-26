@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Jobs\DeleteFileVectors;
+use App\Jobs\GenerateLessonQuiz;
 use App\Jobs\ProcessLessonFile;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -35,6 +36,8 @@ class LessonFile extends Model
         // Removing a file (or its lesson) also removes its vectors, so the AI can no longer quote it.
         static::deleted(function (LessonFile $file) {
             DeleteFileVectors::dispatch($file->id)->afterCommit();
+            // the reviewer was written from the old materials: rebuild it from what is left
+            GenerateLessonQuiz::dispatch($file->lesson_id)->afterCommit();
         });
     }
 

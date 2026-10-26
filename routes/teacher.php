@@ -16,6 +16,8 @@ Route::middleware(['auth', EnsureRole::class . ':teacher'])->prefix('teacher')->
         Route::get('/{week}', [TeacherController::class, 'showLesson'])->whereNumber('week')->name('lessons.show');
         Route::get('/{week}/edit', [TeacherController::class, 'editLesson'])->whereNumber('week')->name('lessons.edit');
         Route::put('/{week}', [TeacherController::class, 'updateLesson'])->whereNumber('week')->name('lessons.update');
+        Route::post('/{week}/video-suggestions', [TeacherController::class, 'videoSuggestions'])
+            ->whereNumber('week')->middleware('throttle:6,1')->name('lessons.video-suggestions');
         Route::post('/{week}/publish', [TeacherController::class, 'togglePublish'])->whereNumber('week')->name('lessons.publish');
         Route::delete('/{week}', [TeacherController::class, 'destroyLesson'])->whereNumber('week')->name('lessons.destroy');
     });

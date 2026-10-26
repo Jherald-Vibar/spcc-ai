@@ -125,6 +125,26 @@
                     <p id="generate-status" class="mt-3 text-sm text-slate-500">{{ $requested ? 'Video generation is requested for this lesson.' : 'Video generation has not been requested.' }}</p>
                     <p class="mt-1 text-xs text-slate-400">The request is saved with the lesson. The AI video itself is produced in a later phase.</p>
                 </div>
+
+                <div class="mt-6">
+                    <label for="youtube_url" class="text-sm font-medium text-slate-700">YouTube video link <span class="font-normal text-slate-400">(optional)</span></label>
+                    <input id="youtube_url" name="youtube_url" type="url" maxlength="200" inputmode="url"
+                           value="{{ old('youtube_url', $editing ? $lesson->youtube_url : '') }}"
+                           placeholder="https://www.youtube.com/watch?v=..." class="{{ $field }} mt-2">
+                    <p class="mt-1 text-xs text-slate-400">Students see this video when the AI video is not available. Pick one that matches your lesson, since students will treat it as part of the lecture.</p>
+                    @error('youtube_url')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+
+                    @if ($editing)
+                        <button type="button" id="find-videos-btn" class="{{ $secondary }} mt-3"
+                                data-url="{{ route('teacher.lessons.video-suggestions', [$subject['code'], $lesson->week]) }}">
+                            <x-icon name="sparkles" class="mr-1 inline size-4 text-blue-700" /> Find videos with AI
+                        </button>
+                        <p id="find-videos-status" class="mt-2 text-sm text-slate-500" aria-live="polite"></p>
+                        <ul id="video-results" class="mt-3 grid gap-3 sm:grid-cols-2"></ul>
+                    @else
+                        <p class="mt-3 text-xs text-slate-400">Save this lesson first, then edit it to let the AI suggest videos from your materials.</p>
+                    @endif
+                </div>
             </div>
 
             {{-- Step 5 --}}
@@ -230,6 +250,50 @@
                     this.disabled = true;
                     this.classList.add('opacity-60');
                 });
+
+                // AI video suggestions (Gemini + Google Search). The teacher must click a video to choose it.
+                var findBtn = $('find-videos-btn');
+                if (findBtn) {
+                    findBtn.addEventListener('click', function () {
+                        var status = $('find-videos-status'), list = $('video-results');
+                        list.innerHTML = '';
+                        status.textContent = 'Searching Google for videos that match this lesson... this can take up to a minute.';
+                        findBtn.disabled = true;
+
+                        fetch(findBtn.dataset.url, {
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': document.querySelector('#lesson-form input[name=_token]').value, 'Accept': 'application/json' }
+                        }).then(function (r) {
+                            return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+                        }).then(function (res) {
+                            if (!res.ok) { status.textContent = (res.d && res.d.message) || 'Search failed. Try again later.'; return; }
+                            if (!res.d.videos.length) { status.textContent = 'No matching videos were found. Try again, or paste a link.'; return; }
+                            status.textContent = 'Choose a video to use, then save the lesson.';
+                            res.d.videos.forEach(function (v) {
+                                var li = document.createElement('li');
+                                li.className = 'flex gap-3 rounded-lg p-2 ring-1 ring-slate-200';
+                                var img = document.createElement('img');
+                                img.src = 'https://i.ytimg.com/vi/' + encodeURIComponent(v.video_id) + '/mqdefault.jpg';
+                                img.alt = ''; img.className = 'h-16 w-28 shrink-0 rounded object-cover';
+                                var box = document.createElement('div'); box.className = 'min-w-0 flex-1';
+                                var t = document.createElement('p'); t.className = 'line-clamp-2 text-sm font-medium text-slate-900'; t.textContent = v.title;
+                                var ch = document.createElement('p'); ch.className = 'truncate text-xs text-slate-500'; ch.textContent = v.channel;
+                                var row = document.createElement('div'); row.className = 'mt-1 flex gap-3 text-xs';
+                                var pick = document.createElement('button'); pick.type = 'button'; pick.className = 'font-semibold text-blue-700 hover:underline'; pick.textContent = 'Use this video';
+                                var prev = document.createElement('a'); prev.href = 'https://www.youtube.com/watch?v=' + encodeURIComponent(v.video_id); prev.target = '_blank'; prev.rel = 'noopener noreferrer'; prev.className = 'text-slate-500 hover:underline'; prev.textContent = 'Preview';
+                                pick.addEventListener('click', function () {
+                                    $('youtube_url').value = 'https://www.youtube.com/watch?v=' + v.video_id;
+                                    status.textContent = 'Selected: ' + v.title;
+                                });
+                                row.appendChild(pick); row.appendChild(prev);
+                                box.appendChild(t); box.appendChild(ch); box.appendChild(row);
+                                li.appendChild(img); li.appendChild(box); list.appendChild(li);
+                            });
+                        }).catch(function () {
+                            status.textContent = 'Search failed. Check your connection and try again.';
+                        }).then(function () { findBtn.disabled = false; });
+                    });
+                }
 
                 // errors come back from the server: reopen step 1
                 @if ($errors->any()) current = 1; @endif

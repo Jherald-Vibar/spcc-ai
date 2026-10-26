@@ -6,7 +6,6 @@ use App\Models\Lesson;
 use App\Models\LessonFile;
 use App\Models\LessonProgress;
 use App\Models\Subject;
-use App\Support\SampleCurriculum;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
@@ -93,9 +92,13 @@ class StudentController extends Controller
             'lesson'    => $lesson,
             'lessons'   => $lessons,
             'materials' => $lesson->files()->orderBy('name')->get(),
-            // Reviewer and forum stay sample data until the AI phases / forum module exist.
-            'questions' => SampleCurriculum::reviewer(),
-            'posts'     => SampleCurriculum::forumPosts(),
+            // the answers stay on the server: the browser only gets the question and its options
+            'questions' => $lesson->quizQuestions()->get(['id', 'question', 'options']),
+            'quizStatus' => $lesson->quiz_status,
+            'lastAttempt' => $lesson->quizAttempts()->where('user_id', $student->id)->latest()->first(['score', 'total', 'created_at']),
+            'posts'     => $lesson->forumPosts()->whereNull('parent_id')
+                                ->with(['user:id,name,role', 'replies.user:id,name,role'])
+                                ->latest()->limit(50)->get(),
             'tab'       => in_array($tab, ['overview', 'video', 'chat', 'reviewer', 'materials', 'forum'], true)
                             ? $tab : 'overview',
         ]);

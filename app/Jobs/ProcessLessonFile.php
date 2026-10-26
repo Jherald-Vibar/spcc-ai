@@ -67,6 +67,9 @@ class ProcessLessonFile implements ShouldQueue
             'chunk_count'       => (int) ($result['chunks'] ?? 0),
             'processed_at'      => now(),
         ]);
+
+        // new material is ready: (re)write the lesson's reviewer questions from all of its files
+        GenerateLessonQuiz::dispatch($file->lesson_id);
     }
 
     public function failed(Throwable $e): void

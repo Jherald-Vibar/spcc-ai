@@ -8,9 +8,13 @@ use App\Models\LessonFile;
 use App\Models\LessonProgress;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\AiClient;
+use App\Services\AiServiceException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -89,6 +93,7 @@ class TeacherController extends Controller
                 'description'     => $data['description'] ?? null,
                 'ai_prompt'       => $data['ai_prompt'] ?? null,
                 'video_requested' => (bool) ($data['generate_video'] ?? false),
+                'youtube_url'     => $this->canonicalYoutube($data['youtube_url'] ?? null),
                 'published_at'    => $data['action'] === 'publish' ? now() : null,
             ]);
 
@@ -125,6 +130,36 @@ class TeacherController extends Controller
         ]);
     }
 
+    /** "Find videos with AI": suggestions only. Nothing is saved until the teacher picks one and saves the lesson. */
+    public function videoSuggestions(Request $request, string $subject, int $week, AiClient $ai): JsonResponse
+    {
+        $subjectModel = $this->subjectOrFail($request, $subject);
+        $lesson = $subjectModel->lessons()->where('week', $week)->firstOrFail();
+
+        try {
+            $videos = $ai->suggestVideos($lesson->id, $lesson->title);
+        } catch (AiServiceException $e) {
+            Log::warning('Video suggestions failed: '.$e->getMessage());
+
+            return response()->json(['message' => 'Video search is not available right now. Try again in a moment, or paste a link.'], 503);
+        }
+
+        // only well-formed YouTube ids ever leave this method
+        $videos = collect($videos)
+            ->filter(fn ($v) => is_array($v) && Lesson::youtubeId('https://www.youtube.com/watch?v='.($v['video_id'] ?? '')) !== null)
+            ->map(fn ($v) => [
+                'video_id'  => (string) $v['video_id'],
+                'url'       => 'https://www.youtube.com/watch?v='.$v['video_id'],
+                'title'     => mb_substr((string) ($v['title'] ?? ''), 0, 150),
+                'channel'   => mb_substr((string) ($v['channel'] ?? ''), 0, 80),
+                'thumbnail' => 'https://i.ytimg.com/vi/'.$v['video_id'].'/mqdefault.jpg',
+            ])
+            ->values()
+            ->all();
+
+        return response()->json(['videos' => $videos]);
+    }
+
     public function updateLesson(Request $request, string $subject, int $week): RedirectResponse
     {
         $subjectModel = $this->subjectOrFail($request, $subject);
@@ -140,6 +175,7 @@ class TeacherController extends Controller
                 'description'     => $data['description'] ?? null,
                 'ai_prompt'       => $data['ai_prompt'] ?? null,
                 'video_requested' => $lesson->video_requested || (bool) ($data['generate_video'] ?? false),
+                'youtube_url'     => $this->canonicalYoutube($data['youtube_url'] ?? null),
                 // keep the original publish date when it stays published
                 'published_at'    => $data['action'] === 'publish' ? ($lesson->published_at ?? now()) : null,
             ]);
@@ -246,10 +282,23 @@ class TeacherController extends Controller
             'remove_files.*'  => ['integer'],
             'ai_prompt'       => ['nullable', 'string', 'max:4000'],
             'generate_video'  => ['nullable', 'boolean'],
+            'youtube_url'     => ['nullable', 'string', 'max:200', function ($attribute, $value, $fail) {
+                if (trim((string) $value) !== '' && Lesson::youtubeId($value) === null) {
+                    $fail('Paste a valid YouTube video link (youtube.com/watch?v=… or youtu.be/…).');
+                }
+            }],
             'action'          => ['required', 'in:draft,publish'],
         ], [
             'week.unique' => 'This subject already has a lesson for that week. Pick another week or edit the existing lesson.',
         ]);
+    }
+
+    /** Save YouTube links in one clean form so only the 11-character id ever reaches the page. */
+    private function canonicalYoutube(?string $url): ?string
+    {
+        $id = Lesson::youtubeId($url);
+
+        return $id ? "https://www.youtube.com/watch?v={$id}" : null;
     }
 
     /** Store uploads on the private disk (not web-accessible) and record them. */

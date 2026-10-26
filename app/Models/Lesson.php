@@ -12,7 +12,7 @@ class Lesson extends Model
 {
     protected $fillable = [
         'subject_id', 'created_by', 'week', 'title', 'description', 'ai_prompt', 'video_requested',
-        'published_at', 'video_path', 'duration',
+        'published_at', 'video_path', 'youtube_url', 'duration', 'quiz_status', 'quiz_error',
     ];
 
     protected function casts(): array
@@ -42,6 +42,21 @@ class Lesson extends Model
     public function progress(): HasMany
     {
         return $this->hasMany(LessonProgress::class);
+    }
+
+    public function forumPosts(): HasMany
+    {
+        return $this->hasMany(ForumPost::class);
+    }
+
+    public function quizQuestions(): HasMany
+    {
+        return $this->hasMany(QuizQuestion::class)->orderBy('position');
+    }
+
+    public function quizAttempts(): HasMany
+    {
+        return $this->hasMany(QuizAttempt::class);
     }
 
     public function reports(): HasMany
@@ -87,6 +102,46 @@ class Lesson extends Model
     public function getVideoUrlAttribute(): ?string
     {
         return $this->video_path ? Storage::disk('public')->url($this->video_path) : null;
+    }
+
+    /**
+     * Extract the 11-character video id from a YouTube link (watch, youtu.be, shorts, embed or live URLs).
+     * Returns null for anything that is not a YouTube video link.
+     */
+    public static function youtubeId(?string $url): ?string
+    {
+        $url = trim((string) $url);
+
+        if ($url === '' || ! preg_match('#^https?://#i', $url)) {
+            return null;
+        }
+
+        $parts = parse_url($url);
+        $host = strtolower($parts['host'] ?? '');
+        $host = preg_replace('/^(www\.|m\.)/', '', $host);
+        $path = $parts['path'] ?? '';
+        $id = null;
+
+        if ($host === 'youtu.be') {
+            $id = ltrim($path, '/');
+        } elseif (in_array($host, ['youtube.com', 'youtube-nocookie.com'], true)) {
+            if (preg_match('#^/(?:embed|shorts|live|v)/([^/?]+)#', $path, $m)) {
+                $id = $m[1];
+            } elseif ($path === '/watch') {
+                parse_str($parts['query'] ?? '', $query);
+                $id = is_string($query['v'] ?? null) ? $query['v'] : null;
+            }
+        }
+
+        return $id !== null && preg_match('/^[A-Za-z0-9_-]{11}$/', $id) ? $id : null;
+    }
+
+    /** Privacy-friendly embed URL for the student player, or null when no valid YouTube link is saved. */
+    public function getYoutubeEmbedUrlAttribute(): ?string
+    {
+        $id = self::youtubeId($this->youtube_url);
+
+        return $id ? "https://www.youtube-nocookie.com/embed/{$id}?rel=0" : null;
     }
 
     /**

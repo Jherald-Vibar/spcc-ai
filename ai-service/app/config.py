@@ -31,6 +31,7 @@ class Settings:
     ocr_lang: str
     max_upload_mb: int
     quiz_max_words: int
+    gemini_search_model: str
 
 
 DEFAULT_MODELS = {"anthropic": "claude-haiku-5-5", "gemini": "gemini-2.5-flash"}
@@ -64,4 +65,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ocr_lang=env.get("OCR_LANG", "eng"),
         max_upload_mb=int(env.get("MAX_UPLOAD_MB", "25")),
         quiz_max_words=int(env.get("QUIZ_MAX_WORDS", "6000")),
+        gemini_search_model=(
+            env.get("GEMINI_SEARCH_MODEL")
+            or (env.get("LLM_MODEL") if provider == "gemini" else "")
+            or "gemini-2.5-flash"
+        ),
     )
